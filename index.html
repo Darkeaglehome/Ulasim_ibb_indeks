@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>İBB Trafik Analizi & Harita</title>
+    <meta name="description" content="İstanbul Büyükşehir Belediyesi trafik yoğunluk verilerini analiz edin.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/luxon@3.3.0/build/global/luxon.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-luxon@1.3.1/dist/chartjs-adapter-luxon.umd.min.js"></script>
+
+    <style>
+        /* ========= RESET & BASE ========= */
+        *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            min-height: 100vh;
+            background: #0a0c12;
+            color: #fff;
+            overflow-x: hidden;
+        }
+
+        /* ========= BACKGROUND ========= */
+        .bg-layer {
+            position: fixed;
+            inset: 0;
+            background-image: url('background.png');
+            background-size: cover;
+            background-position: center;
+            z-index: 0;
+        }
+        .bg-overlay {
+            position: fixed;
+            inset: 0;
+            background: linear-gradient(135deg, rgba(5, 7, 15, 0.88) 0%, rgba(10, 12, 25, 0.82) 50%, rgba(5, 7, 15, 0.90) 100%);
+            z-index: 1;
+        }
+
+        /* ========= LAYOUT ========= */
+        .page {
+            position: relative;
+            z-index: 2;
+            max-width: 1280px;
+            margin: 0 auto;
+            padding: 2.5rem 1.5rem 4rem;
+        }
+
+        /* ========= HEADER ========= */
+        .header { text-align: center; margin-bottom: 2rem; }
+        .header h1 {
+            font-size: clamp(2rem, 5vw, 3.8rem);
+            font-weight: 900;
+            letter-spacing: -0.04em;
+            background: linear-gradient(135deg, #fff 0%, #a5b4fc 60%, #818cf8 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 1rem;
+        }
+
+        /* ========= TABS ========= */
+        .tabs {
+            display: flex;
+            justify-content: center;
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        .tab-btn {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            color: #94a3b8;
+            padding: 0.75rem 2rem;
+            border-radius: 99px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .tab-btn.active {
+            background: rgba(99,102,241,0.2);
+            border-color: rgba(99,102,241,0.5);
+            color: #fff;
+        }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; animation: fadeIn 0.4s; }
+
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* ========= CARD ========= */
+        .card {
+            background: rgba(15, 18, 32, 0.7);
+            border: 1px solid rgba(255,255,255,0.07);
+            border-radius: 28px;
+            padding: 2.25rem;
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            box-shadow: 0 32px 64px -16px rgba(0,0,0,0.6);
+        }
+
+        /* ========= CONTROLS ========= */
+        .controls {
+            display: grid;
+            grid-template-columns: 1fr 1fr auto;
+            gap: 1.5rem;
+            align-items: end;
+            margin-bottom: 2rem;
+        }
+
+        .field-group { display: flex; flex-direction: column; gap: 0.6rem; }
+        .field-group label {
+            font-size: 0.72rem;
+            font-weight: 700;
+            color: #475569;
+            text-transform: uppercase;
+        }
+        .field-row { display: flex; gap: 0.5rem; }
+
+        input[type="date"], input[type="time"] {
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 12px;
+            padding: 0.8rem;
+            color: #e2e8f0;
+            font-size: 0.9rem;
+            color-scheme: dark;
+        }
+        input[type="date"] { flex: 1.6; }
+        input[type="time"] { flex: 1; }
+
+        /* ========= BUTTONS ========= */
+        .btn-group { display: flex; flex-direction: column; gap: 0.5rem; }
+        .btn {
+            border: none;
+            border-radius: 12px;
+            padding: 0.85rem 1.25rem;
+            font-weight: 600;
+            cursor: pointer;
+            color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            transition: 0.2s;
+        }
+        .btn:hover { transform: translateY(-2px); }
+        .btn-primary { background: linear-gradient(135deg, #6366f1, #4f46e5); }
+        .btn-secondary { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); color: #cbd5e1;}
+        .btn-success { background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.3); color: #34d399; }
+        
+        /* ========= CHART & STATS ========= */
+        .chart-area { height: 400px; margin-bottom: 2rem; }
+        .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
+        .stat-box {
+            background: rgba(255,255,255,0.025);
+            border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 20px;
+            padding: 1.5rem;
+            text-align: center;
+        }
+        .stat-number { font-size: 2.2rem; font-weight: 900; display: block; margin-bottom: 0.2rem; }
+        .stat-number.avg { color: #818cf8; }
+        .stat-number.max { color: #f87171; }
+        .stat-number.min { color: #34d399; }
+        .stat-label { font-size: 0.75rem; color: #64748b; text-transform: uppercase; font-weight: 700; }
+
+        /* ========= TOAST ========= */
+        #toast {
+            position: fixed; bottom: 2rem; left: 50%; transform: translateX(-50%) translateY(120px);
+            background: #1e293b; border: 1px solid rgba(255,255,255,0.1); color: #fff;
+            padding: 0.9rem 1.75rem; border-radius: 999px; font-weight: 600;
+            z-index: 1000; opacity: 0; transition: 0.5s;
+        }
+        #toast.visible { opacity: 1; transform: translateX(-50%) translateY(0); }
+        #toast.success { border-color: rgba(52,211,153,0.3); color: #6ee7b7; }
+        #toast.error { border-color: rgba(248,113,113,0.3); color: #fca5a5; }
+
+        @media (max-width: 900px) {
+            .controls { grid-template-columns: 1fr; }
+            .btn-group { flex-direction: row; flex-wrap: wrap; }
+            .btn { flex: 1; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="bg-layer"></div>
+<div class="bg-overlay"></div>
+
+<div class="page">
+    <header class="header">
+        <h1>Trafik Analiz Paneli</h1>
+    </header>
+
+    <div class="tabs">
+        <button class="tab-btn active" onclick="switchTab('chartTab')">Genel İndeks</button>
+    </div>
+
+    <div class="card">
+        <!-- CHART TAB -->
+        <div id="chartTab" class="tab-content active">
+            <div class="controls">
+                <div class="field-group">
+                    <label>Başlangıç Tarihi & Saati</label>
+                    <div class="field-row">
+                        <input type="date" id="startDate"><input type="time" id="startTime">
+                    </div>
+                </div>
+                <div class="field-group">
+                    <label>Bitiş Tarihi & Saati</label>
+                    <div class="field-row">
+                        <input type="date" id="endDate"><input type="time" id="endTime">
+                    </div>
+                </div>
+                <div class="btn-group">
+                    <button id="btnFetch" class="btn btn-primary" onclick="fetchData()">Analiz Et</button>
+                    <button class="btn btn-success" onclick="fetchHistory()">Geçmişi Çek</button>
+                    <button class="btn btn-secondary" onclick="exportCSV()">CSV İndir</button>
+                </div>
+            </div>
+
+            <div class="chart-area"><canvas id="trafficChart"></canvas></div>
+
+            <div class="stats">
+                <div class="stat-box"><span class="stat-number avg" id="statAvg">—</span><span class="stat-label">Ortalama</span></div>
+                <div class="stat-box"><span class="stat-number max" id="statMax">—</span><span class="stat-label">En Yüksek</span></div>
+                <div class="stat-box"><span class="stat-number min" id="statMin">—</span><span class="stat-label">En Düşük</span></div>
+            </div>
+        </div>
+
+        <!-- No Map Tab -->
+    </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ========== TAB LOGIC ==========
+function switchTab(tabId) {
+    document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+    document.getElementById(tabId).classList.add('active');
+    event.target.classList.add('active');
+}
+
+// ========== INITIAL DATES ==========
+const now = new Date();
+const yesterday = new Date(now - 24*3600*1000);
+const pad = n => String(n).padStart(2, '0');
+const fmtDate = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+const fmtTime = d => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+
+// Default dates will be initialized async
+// document.getElementById('startDate').value = fmtDate(yesterday);
+// document.getElementById('startTime').value = fmtTime(yesterday);
+// ...
+
+// ========== TOAST ==========
+let toastTimer;
+function showToast(msg, type = 'info') {
+    const t = document.getElementById('toast');
+    t.textContent = msg; t.className = `visible ${type}`;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.className = '', 4000);
+}
+
+// ========== INDEX CHART LOGIC ==========
+let chart;
+function getParams() {
+    const sd = document.getElementById('startDate').value, st = document.getElementById('startTime').value;
+    const ed = document.getElementById('endDate').value, et = document.getElementById('endTime').value;
+    return {
+        start: sd && st ? `${sd}T${st}:00` : sd,
+        end:   ed && et ? `${ed}T${et}:00` : ed
+    };
+}
+
+async function fetchData() {
+    const { start, end } = getParams();
+    try {
+        const res = await fetch(`/api/traffic?start=${start||''}&end=${end||''}`);
+        const data = await res.json();
+        renderChart(data);
+        renderStats(data);
+    } catch(e) { showToast('Hata: ' + e.message, 'error'); }
+}
+
+function renderChart(data) {
+    const ctx = document.getElementById('trafficChart').getContext('2d');
+    const grad = ctx.createLinearGradient(0, 0, 0, 400);
+    grad.addColorStop(0, 'rgba(99,102,241,0.3)'); grad.addColorStop(1, 'rgba(99,102,241,0)');
+
+    if (chart) chart.destroy();
+    chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: data.map(d => d.traffic_index_date),
+            datasets: [{
+                data: data.map(d => d.traffic_index), borderColor: '#818cf8', backgroundColor: grad,
+                borderWidth: 3, fill: true, tension: 0.4, pointRadius: 0
+            }]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            scales: { 
+                x: { 
+                    type: 'time', 
+                    time: { 
+                        unit: 'hour',
+                        displayFormats: { hour: 'dd MMM HH:mm', day: 'dd MMM' },
+                        tooltipFormat: 'dd MMM yyyy HH:mm'
+                    }, 
+                    display: true,
+                    ticks: { color: '#94a3b8', maxRotation: 45, minRotation: 45 },
+                    grid: { 
+                        color: function(context) {
+                            if (context.tick && context.tick.value) {
+                                const d = new Date(context.tick.value);
+                                if(d.getHours() === 0 && d.getMinutes() === 0) return 'rgba(255,255,255,0.4)'; // Gün başlangıcını vurgula
+                            }
+                            return 'rgba(255,255,255,0.05)';
+                        },
+                        lineWidth: function(context) {
+                            if (context.tick && context.tick.value) {
+                                const d = new Date(context.tick.value);
+                                if(d.getHours() === 0 && d.getMinutes() === 0) return 2;
+                            }
+                            return 1;
+                        }
+                    }
+                },
+                y: {
+                    display: true,
+                    ticks: { color: '#94a3b8' },
+                    grid: { color: 'rgba(255,255,255,0.05)' }
+                }
+            },
+            plugins: { legend: { display: false } }
+        }
+    });
+}
+
+function renderStats(data) {
+    if (!data.length) return;
+    const vals = data.map(d => d.traffic_index);
+    const avg = Math.round(vals.reduce((a,b)=>a+b,0)/vals.length);
+    document.getElementById('statAvg').textContent = avg;
+    document.getElementById('statMax').textContent = Math.max(...vals);
+    document.getElementById('statMin').textContent = Math.min(...vals);
+}
+
+async function exportCSV() {
+    const { start, end } = getParams();
+    try {
+        const res = await fetch(`/api/export-csv?start=${start||''}&end=${end||''}`);
+        const result = await res.json();
+        showToast(result.message, result.success ? 'success' : 'error');
+    } catch(e) { showToast('Hata: ' + e.message, 'error'); }
+}
+
+async function fetchHistory() {
+    const sdStr = document.getElementById('startDate').value;
+    if (!sdStr) {
+        showToast('Lütfen geçmişi çekmek için bir başlangıç tarihi seçin.', 'error');
+        return;
+    }
+    const sd = new Date(sdStr);
+    const today = new Date();
+    let days = Math.ceil((today - sd) / (1000 * 3600 * 24));
+    
+    if (days <= 0) days = 1;
+    if (days > 365) days = 365;
+
+    showToast(days + ' günlük veri API\'den çekiliyor...', 'info');
+    
+    try {
+        const res = await fetch(`/api/fetch-history?days=${days}`);
+        const result = await res.json();
+        showToast(result.message, result.success ? 'success' : 'error');
+        fetchData();
+    } catch(e) { showToast('Hata: ' + e.message, 'error'); }
+}
+
+async function initApp() {
+    try {
+        const res = await fetch('/api/latest-dates');
+        const dates = await res.json();
+        
+        if (dates.traffic_index) {
+            const endIdx = new Date(dates.traffic_index);
+            const startIdx = new Date(endIdx.getTime() - 24*3600*1000); // 1 gün öncesi
+            document.getElementById('startDate').value = fmtDate(startIdx);
+            document.getElementById('startTime').value = fmtTime(startIdx);
+            document.getElementById('endDate').value   = fmtDate(endIdx);
+            document.getElementById('endTime').value   = fmtTime(endIdx);
+        }
+    } catch(e) {
+        console.warn("Could not fetch latest dates, using defaults.");
+        document.getElementById('startDate').value = fmtDate(yesterday);
+        document.getElementById('startTime').value = fmtTime(yesterday);
+        document.getElementById('endDate').value   = fmtDate(now);
+        document.getElementById('endTime').value   = fmtTime(now);
+    }
+    
+    fetchData();
+}
+
+// Init
+initApp();
+</script>
+</body>
+</html>

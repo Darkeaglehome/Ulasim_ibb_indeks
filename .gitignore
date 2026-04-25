@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+traffic_data.db
+*.bmp
+.env
+.venv/
+venv/
