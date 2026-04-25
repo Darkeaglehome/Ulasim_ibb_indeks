@@ -12,6 +12,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/luxon@3.3.0/build/global/luxon.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-luxon@1.3.1/dist/chartjs-adapter-luxon.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-wasm.js"></script>
 
     <style>
         /* ========= RESET & BASE ========= */
@@ -266,8 +267,18 @@ function showToast(msg, type = 'info') {
     toastTimer = setTimeout(() => t.className = '', 4000);
 }
 
-// ========== INDEX CHART LOGIC ==========
+// ========== SQL.JS LOGIC ==========
+let db = null;
 let chart;
+
+async function initSqlJs() {
+    const SQL = await window.initSqlJs({ locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/${file}` });
+    const response = await fetch('traffic_data.db');
+    if(!response.ok) throw new Error('Veritabanı indirilemedi!');
+    const buffer = await response.arrayBuffer();
+    db = new SQL.Database(new Uint8Array(buffer));
+}
+
 function getParams() {
     const sd = document.getElementById('startDate').value, st = document.getElementById('startTime').value;
     const ed = document.getElementById('endDate').value, et = document.getElementById('endTime').value;
@@ -278,10 +289,24 @@ function getParams() {
 }
 
 async function fetchData() {
+    if (!db) return showToast('Veritabanı yükleniyor...', 'info');
     const { start, end } = getParams();
+    
+    let query = "SELECT traffic_index, traffic_index_date FROM traffic_index";
+    let conditions = [];
+    if (start && end) conditions.push(`traffic_index_date BETWEEN '${start}' AND '${end}'`);
+    else if (start) conditions.push(`traffic_index_date >= '${start}'`);
+    
+    if (conditions.length > 0) query += " WHERE " + conditions.join(' AND ');
+    query += " ORDER BY traffic_index_date ASC";
+
     try {
-        const res = await fetch(`/api/traffic?start=${start||''}&end=${end||''}`);
-        const data = await res.json();
+        const stmt = db.prepare(query);
+        const data = [];
+        while(stmt.step()) {
+            data.push(stmt.getAsObject());
+        }
+        stmt.free();
         renderChart(data);
         renderStats(data);
     } catch(e) { showToast('Hata: ' + e.message, 'error'); }
@@ -318,7 +343,7 @@ function renderChart(data) {
                         color: function(context) {
                             if (context.tick && context.tick.value) {
                                 const d = new Date(context.tick.value);
-                                if(d.getHours() === 0 && d.getMinutes() === 0) return 'rgba(255,255,255,0.4)'; // Gün başlangıcını vurgula
+                                if(d.getHours() === 0 && d.getMinutes() === 0) return 'rgba(255,255,255,0.4)';
                             }
                             return 'rgba(255,255,255,0.05)';
                         },
@@ -331,11 +356,7 @@ function renderChart(data) {
                         }
                     }
                 },
-                y: {
-                    display: true,
-                    ticks: { color: '#94a3b8' },
-                    grid: { color: 'rgba(255,255,255,0.05)' }
-                }
+                y: { display: true, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } }
             },
             plugins: { legend: { display: false } }
         }
@@ -352,52 +373,65 @@ function renderStats(data) {
 }
 
 async function exportCSV() {
+    if (!db) return showToast('Veritabanı yüklü değil', 'error');
     const { start, end } = getParams();
+    
+    let query = "SELECT traffic_index, traffic_index_date FROM traffic_index";
+    let conditions = [];
+    if (start && end) conditions.push(`traffic_index_date BETWEEN '${start}' AND '${end}'`);
+    else if (start) conditions.push(`traffic_index_date >= '${start}'`);
+    if (conditions.length > 0) query += " WHERE " + conditions.join(' AND ');
+    query += " ORDER BY traffic_index_date ASC";
+
     try {
-        const res = await fetch(`/api/export-csv?start=${start||''}&end=${end||''}`);
-        const result = await res.json();
-        showToast(result.message, result.success ? 'success' : 'error');
+        const stmt = db.prepare(query);
+        let csvContent = "data:text/csv;charset=utf-8,Tarih,Trafik İndeksi\n";
+        let hasData = false;
+        while(stmt.step()) {
+            hasData = true;
+            const row = stmt.getAsObject();
+            csvContent += `${row.traffic_index_date},${row.traffic_index}\n`;
+        }
+        stmt.free();
+
+        if (!hasData) return showToast("Dışa aktarılacak veri bulunamadı.", "error");
+
+        const encodedUri = encodeURI(csvContent);
+        const link = document.createElement("a");
+        link.setAttribute("href", encodedUri);
+        link.setAttribute("download", `trafik_verisi_${Date.now()}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        showToast("Veri başarıyla indirildi", "success");
     } catch(e) { showToast('Hata: ' + e.message, 'error'); }
 }
 
 async function fetchHistory() {
-    const sdStr = document.getElementById('startDate').value;
-    if (!sdStr) {
-        showToast('Lütfen geçmişi çekmek için bir başlangıç tarihi seçin.', 'error');
-        return;
-    }
-    const sd = new Date(sdStr);
-    const today = new Date();
-    let days = Math.ceil((today - sd) / (1000 * 3600 * 24));
-    
-    if (days <= 0) days = 1;
-    if (days > 365) days = 365;
-
-    showToast(days + ' günlük veri API\'den çekiliyor...', 'info');
-    
-    try {
-        const res = await fetch(`/api/fetch-history?days=${days}`);
-        const result = await res.json();
-        showToast(result.message, result.success ? 'success' : 'error');
-        fetchData();
-    } catch(e) { showToast('Hata: ' + e.message, 'error'); }
+    showToast('Tarihsel veriler Github Actions ile sunucu arkasında otomatik güncellenmektedir.', 'info');
 }
 
 async function initApp() {
     try {
-        const res = await fetch('/api/latest-dates');
-        const dates = await res.json();
+        showToast('Veritabanı indiriliyor, lütfen bekleyin...', 'info');
+        await initSqlJs();
         
-        if (dates.traffic_index) {
-            const endIdx = new Date(dates.traffic_index);
-            const startIdx = new Date(endIdx.getTime() - 24*3600*1000); // 1 gün öncesi
-            document.getElementById('startDate').value = fmtDate(startIdx);
-            document.getElementById('startTime').value = fmtTime(startIdx);
-            document.getElementById('endDate').value   = fmtDate(endIdx);
-            document.getElementById('endTime').value   = fmtTime(endIdx);
+        const stmt = db.prepare("SELECT MAX(traffic_index_date) as max_date FROM traffic_index");
+        if(stmt.step()){
+            const maxDateRow = stmt.getAsObject();
+            if (maxDateRow.max_date) {
+                const endIdx = new Date(maxDateRow.max_date);
+                const startIdx = new Date(endIdx.getTime() - 24*3600*1000);
+                document.getElementById('startDate').value = fmtDate(startIdx);
+                document.getElementById('startTime').value = fmtTime(startIdx);
+                document.getElementById('endDate').value   = fmtDate(endIdx);
+                document.getElementById('endTime').value   = fmtTime(endIdx);
+            }
         }
+        stmt.free();
+        showToast('Veritabanı başarıyla yüklendi!', 'success');
     } catch(e) {
-        console.warn("Could not fetch latest dates, using defaults.");
+        console.warn("DB yüklenirken hata:", e);
         document.getElementById('startDate').value = fmtDate(yesterday);
         document.getElementById('startTime').value = fmtTime(yesterday);
         document.getElementById('endDate').value   = fmtDate(now);
