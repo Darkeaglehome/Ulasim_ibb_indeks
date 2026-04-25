@@ -1,10 +1,8 @@
 import requests
 import sqlite3
-import datetime
+from datetime import datetime
 import os
 
-# API URL
-API_URL = "https://api.ibb.gov.tr/tkmservices/api/TrafficData/v1/TrafficIndexHistory/1/5M"
 DB_NAME = "traffic_data.db"
 
 def setup_db():
@@ -20,15 +18,47 @@ def setup_db():
     conn.commit()
     conn.close()
 
-def fetch_and_save():
+def get_missing_days():
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute("SELECT MAX(traffic_index_date) FROM traffic_index")
+    row = cursor.fetchone()
+    conn.close()
+
+    if not row or not row[0]:
+        return 30 # Veritabanı boşsa son 30 günü çek
+    
+    last_date_str = row[0]
+    # Örnek tarih formatı: "2026-04-24T18:58:19.4738242+03:00"
+    # Sadece ilk 19 karakteri (YYYY-MM-DDTHH:MM:SS) alıyoruz
     try:
-        print(f"Fetching data from {API_URL}...")
-        response = requests.get(API_URL)
+        last_date = datetime.strptime(last_date_str[:19], "%Y-%m-%dT%H:%M:%S")
+        now = datetime.now()
+        diff = now - last_date
+        days = diff.days + 1 # En az 1 günlük çek, eksikse daha fazla
+        
+        if days < 1:
+            days = 1
+        elif days > 30:
+            days = 30 # API'yi yormamak için maksimum 30 gün
+            
+        return days
+    except Exception as e:
+        print(f"Tarih ayrıştırma hatası: {e}. Varsayılan 1 gün çekiliyor.")
+        return 1
+
+def fetch_and_save():
+    days_to_fetch = get_missing_days()
+    api_url = f"https://api.ibb.gov.tr/tkmservices/api/TrafficData/v1/TrafficIndexHistory/{days_to_fetch}/5M"
+    
+    try:
+        print(f"Son kayıttan bu yana geçen/eksik süre kontrol edildi. {days_to_fetch} günlük veri çekiliyor: {api_url}")
+        response = requests.get(api_url)
         response.raise_for_status()
         data = response.json()
 
         if not data:
-            print("No data received from API.")
+            print("API'den veri alınamadı.")
             return
 
         conn = sqlite3.connect(DB_NAME)
@@ -39,8 +69,6 @@ def fetch_and_save():
             idx = item.get("TrafficIndex")
             date_str = item.get("TrafficIndexDate")
             
-            # API returns dates like "2026-04-24T18:58:19.4738242+03:00"
-            # We store it as is, or can normalize if needed.
             try:
                 cursor.execute(
                     "INSERT OR IGNORE INTO traffic_index (traffic_index, traffic_index_date) VALUES (?, ?)",
@@ -49,14 +77,14 @@ def fetch_and_save():
                 if cursor.rowcount > 0:
                     new_records += 1
             except Exception as e:
-                print(f"Error inserting record: {e}")
+                print(f"Kayıt hatası: {e}")
 
         conn.commit()
         conn.close()
-        print(f"Success: {new_records} new records added.")
+        print(f"Başarılı: {new_records} yeni kayıt eklendi.")
 
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"Hata: {e}")
 
 if __name__ == "__main__":
     setup_db()
