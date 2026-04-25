@@ -1,6 +1,7 @@
 import requests
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone
+import re
 import os
 
 DB_NAME = "traffic_data.db"
@@ -68,6 +69,10 @@ def fetch_and_save():
         for item in data:
             idx = item.get("TrafficIndex")
             date_str = item.get("TrafficIndexDate")
+            
+            # Tarihi normalize et: sadece YYYY-MM-DDTHH:MM:SS (ilk 19 karakter)
+            if date_str:
+                date_str = str(date_str)[:19]
             
             try:
                 cursor.execute(

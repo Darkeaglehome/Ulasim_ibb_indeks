@@ -273,8 +273,10 @@ let chart;
 
 async function initSqlJs() {
     const SQL = await window.initSqlJs({ locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/${file}` });
-    const response = await fetch('traffic_data.db');
-    if(!response.ok) throw new Error('Veritabanı indirilemedi!');
+    // Cache-bust: her istekte yeni dosya indir (GitHub Actions her 5dk'da güncelliyor)
+    const cacheBust = Date.now();
+    const response = await fetch(`traffic_data.db?v=${cacheBust}`);
+    if(!response.ok) throw new Error(`Veritabanı indirilemedi! (HTTP ${response.status})`);
     const buffer = await response.arrayBuffer();
     db = new SQL.Database(new Uint8Array(buffer));
 }
@@ -282,20 +284,22 @@ async function initSqlJs() {
 function getParams() {
     const sd = document.getElementById('startDate').value, st = document.getElementById('startTime').value;
     const ed = document.getElementById('endDate').value, et = document.getElementById('endTime').value;
+    // DB'de tarihler YYYY-MM-DDTHH:MM:SS formatında saklanıyor
     return {
-        start: sd && st ? `${sd}T${st}:00` : sd,
-        end:   ed && et ? `${ed}T${et}:00` : ed
+        start: sd && st ? `${sd}T${st}:00` : (sd ? `${sd}T00:00:00` : null),
+        end:   ed && et ? `${ed}T${et}:59` : (ed ? `${ed}T23:59:59` : null)
     };
 }
 
 async function fetchData() {
-    if (!db) return showToast('Veritabanı yükleniyor...', 'info');
+    if (!db) return showToast('Veritabanı henüz yüklenmedi, lütfen bekleyin...', 'info');
     const { start, end } = getParams();
     
     let query = "SELECT traffic_index, traffic_index_date FROM traffic_index";
     let conditions = [];
     if (start && end) conditions.push(`traffic_index_date BETWEEN '${start}' AND '${end}'`);
     else if (start) conditions.push(`traffic_index_date >= '${start}'`);
+    else if (end) conditions.push(`traffic_index_date <= '${end}'`);
     
     if (conditions.length > 0) query += " WHERE " + conditions.join(' AND ');
     query += " ORDER BY traffic_index_date ASC";
@@ -307,9 +311,15 @@ async function fetchData() {
             data.push(stmt.getAsObject());
         }
         stmt.free();
+        
+        if (data.length === 0) {
+            showToast('Seçilen tarih aralığında veri bulunamadı.', 'error');
+        } else {
+            showToast(`${data.length} kayıt yüklendi.`, 'success');
+        }
         renderChart(data);
         renderStats(data);
-    } catch(e) { showToast('Hata: ' + e.message, 'error'); }
+    } catch(e) { showToast('Hata: ' + e.message, 'error'); console.error(e); }
 }
 
 function renderChart(data) {
@@ -416,11 +426,14 @@ async function initApp() {
         showToast('Veritabanı indiriliyor, lütfen bekleyin...', 'info');
         await initSqlJs();
         
-        const stmt = db.prepare("SELECT MAX(traffic_index_date) as max_date FROM traffic_index");
+        // DB'deki en son tarihe göre varsayılan tarih aralığını ayarla
+        const stmt = db.prepare("SELECT MAX(traffic_index_date) as max_date, MIN(traffic_index_date) as min_date FROM traffic_index");
         if(stmt.step()){
-            const maxDateRow = stmt.getAsObject();
-            if (maxDateRow.max_date) {
-                const endIdx = new Date(maxDateRow.max_date);
+            const row = stmt.getAsObject();
+            if (row.max_date) {
+                // Normalize: sadece YYYY-MM-DDTHH:MM:SS al
+                const maxStr = String(row.max_date).substring(0, 19);
+                const endIdx = new Date(maxStr.replace('T', ' '));
                 const startIdx = new Date(endIdx.getTime() - 24*3600*1000);
                 document.getElementById('startDate').value = fmtDate(startIdx);
                 document.getElementById('startTime').value = fmtTime(startIdx);
@@ -432,13 +445,14 @@ async function initApp() {
         showToast('Veritabanı başarıyla yüklendi!', 'success');
     } catch(e) {
         console.warn("DB yüklenirken hata:", e);
+        showToast('DB yükleme hatası: ' + e.message, 'error');
         document.getElementById('startDate').value = fmtDate(yesterday);
         document.getElementById('startTime').value = fmtTime(yesterday);
         document.getElementById('endDate').value   = fmtDate(now);
         document.getElementById('endTime').value   = fmtTime(now);
     }
     
-    fetchData();
+    await fetchData();
 }
 
 // Init

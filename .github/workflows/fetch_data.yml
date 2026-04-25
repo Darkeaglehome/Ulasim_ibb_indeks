@@ -2,8 +2,8 @@ name: Fetch Traffic Data
 
 on:
   schedule:
-    - cron: '*/5 * * * *' # Every 5 minutes
-  workflow_dispatch: # Allows manual trigger
+    - cron: '*/5 * * * *' # Her 5 dakikada bir
+  workflow_dispatch: # Manuel tetikleme
 
 jobs:
   fetch:
@@ -25,12 +25,11 @@ jobs:
       - name: Run data fetch script
         run: |
           python fetch_traffic.py
-          python fetch_locations.py
 
       - name: Commit and push changes
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
-          git add traffic_data.db traffic_locations.db
-          git commit -m "Automated data fetch: $(date)" || echo "No changes to commit"
+          git add traffic_data.db
+          git commit -m "chore: otomatik veri güncellemesi [$(date +'%Y-%m-%d %H:%M')]" || echo "Eklenecek değişiklik yok"
           git push
