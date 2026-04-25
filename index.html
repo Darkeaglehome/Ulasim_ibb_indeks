@@ -3,19 +3,18 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>İBB Trafik Analizi & Harita</title>
+    <title>İBB Trafik Analizi</title>
     <meta name="description" content="İstanbul Büyükşehir Belediyesi trafik yoğunluk verilerini analiz edin.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
-    
-    <!-- Chart.js -->
+
+    <!-- Chart.js + Luxon + sql.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/luxon@3.3.0/build/global/luxon.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-luxon@1.3.1/dist/chartjs-adapter-luxon.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-wasm.js"></script>
 
     <style>
-        /* ========= RESET & BASE ========= */
         *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
         body {
@@ -28,26 +27,21 @@
 
         /* ========= BACKGROUND ========= */
         .bg-layer {
-            position: fixed;
-            inset: 0;
+            position: fixed; inset: 0;
             background-image: url('background.png');
-            background-size: cover;
-            background-position: center;
+            background-size: cover; background-position: center;
             z-index: 0;
         }
         .bg-overlay {
-            position: fixed;
-            inset: 0;
-            background: linear-gradient(135deg, rgba(5, 7, 15, 0.88) 0%, rgba(10, 12, 25, 0.82) 50%, rgba(5, 7, 15, 0.90) 100%);
+            position: fixed; inset: 0;
+            background: linear-gradient(135deg, rgba(5,7,15,0.88) 0%, rgba(10,12,25,0.82) 50%, rgba(5,7,15,0.90) 100%);
             z-index: 1;
         }
 
         /* ========= LAYOUT ========= */
         .page {
-            position: relative;
-            z-index: 2;
-            max-width: 1280px;
-            margin: 0 auto;
+            position: relative; z-index: 2;
+            max-width: 1280px; margin: 0 auto;
             padding: 2.5rem 1.5rem 4rem;
         }
 
@@ -55,47 +49,34 @@
         .header { text-align: center; margin-bottom: 2rem; }
         .header h1 {
             font-size: clamp(2rem, 5vw, 3.8rem);
-            font-weight: 900;
-            letter-spacing: -0.04em;
+            font-weight: 900; letter-spacing: -0.04em;
             background: linear-gradient(135deg, #fff 0%, #a5b4fc 60%, #818cf8 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
             margin-bottom: 1rem;
         }
 
         /* ========= TABS ========= */
-        .tabs {
-            display: flex;
-            justify-content: center;
-            gap: 1rem;
-            margin-bottom: 2rem;
-        }
+        .tabs { display: flex; justify-content: center; gap: 1rem; margin-bottom: 2rem; }
         .tab-btn {
             background: rgba(255,255,255,0.05);
             border: 1px solid rgba(255,255,255,0.1);
-            color: #94a3b8;
-            padding: 0.75rem 2rem;
-            border-radius: 99px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s;
+            color: #94a3b8; padding: 0.75rem 2rem;
+            border-radius: 99px; font-weight: 600;
+            cursor: pointer; transition: all 0.2s;
         }
         .tab-btn.active {
             background: rgba(99,102,241,0.2);
-            border-color: rgba(99,102,241,0.5);
-            color: #fff;
+            border-color: rgba(99,102,241,0.5); color: #fff;
         }
         .tab-content { display: none; }
         .tab-content.active { display: block; animation: fadeIn 0.4s; }
-
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 
         /* ========= CARD ========= */
         .card {
-            background: rgba(15, 18, 32, 0.7);
+            background: rgba(15,18,32,0.7);
             border: 1px solid rgba(255,255,255,0.07);
-            border-radius: 28px;
-            padding: 2.25rem;
+            border-radius: 28px; padding: 2.25rem;
             backdrop-filter: blur(20px);
             -webkit-backdrop-filter: blur(20px);
             box-shadow: 0 32px 64px -16px rgba(0,0,0,0.6);
@@ -105,28 +86,20 @@
         .controls {
             display: grid;
             grid-template-columns: 1fr 1fr auto;
-            gap: 1.5rem;
-            align-items: end;
-            margin-bottom: 2rem;
+            gap: 1.5rem; align-items: end; margin-bottom: 2rem;
         }
-
         .field-group { display: flex; flex-direction: column; gap: 0.6rem; }
         .field-group label {
-            font-size: 0.72rem;
-            font-weight: 700;
-            color: #475569;
-            text-transform: uppercase;
+            font-size: 0.72rem; font-weight: 700;
+            color: #475569; text-transform: uppercase;
         }
         .field-row { display: flex; gap: 0.5rem; }
 
         input[type="date"], input[type="time"] {
             background: rgba(255,255,255,0.04);
             border: 1px solid rgba(255,255,255,0.08);
-            border-radius: 12px;
-            padding: 0.8rem;
-            color: #e2e8f0;
-            font-size: 0.9rem;
-            color-scheme: dark;
+            border-radius: 12px; padding: 0.8rem;
+            color: #e2e8f0; font-size: 0.9rem; color-scheme: dark;
         }
         input[type="date"] { flex: 1.6; }
         input[type="time"] { flex: 1; }
@@ -134,32 +107,24 @@
         /* ========= BUTTONS ========= */
         .btn-group { display: flex; flex-direction: column; gap: 0.5rem; }
         .btn {
-            border: none;
-            border-radius: 12px;
-            padding: 0.85rem 1.25rem;
-            font-weight: 600;
-            cursor: pointer;
-            color: #fff;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 0.5rem;
-            transition: 0.2s;
+            border: none; border-radius: 12px;
+            padding: 0.85rem 1.25rem; font-weight: 600;
+            cursor: pointer; color: #fff;
+            display: flex; align-items: center;
+            justify-content: center; gap: 0.5rem; transition: 0.2s;
         }
         .btn:hover { transform: translateY(-2px); }
-        .btn-primary { background: linear-gradient(135deg, #6366f1, #4f46e5); }
-        .btn-secondary { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); color: #cbd5e1;}
-        .btn-success { background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.3); color: #34d399; }
-        
+        .btn-primary  { background: linear-gradient(135deg, #6366f1, #4f46e5); }
+        .btn-secondary{ background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); color: #cbd5e1; }
+        .btn-refresh  { background: rgba(99,102,241,0.12); border: 1px solid rgba(99,102,241,0.3); color: #a5b4fc; }
+
         /* ========= CHART & STATS ========= */
         .chart-area { height: 400px; margin-bottom: 2rem; }
         .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
         .stat-box {
             background: rgba(255,255,255,0.025);
             border: 1px solid rgba(255,255,255,0.06);
-            border-radius: 20px;
-            padding: 1.5rem;
-            text-align: center;
+            border-radius: 20px; padding: 1.5rem; text-align: center;
         }
         .stat-number { font-size: 2.2rem; font-weight: 900; display: block; margin-bottom: 0.2rem; }
         .stat-number.avg { color: #818cf8; }
@@ -167,16 +132,41 @@
         .stat-number.min { color: #34d399; }
         .stat-label { font-size: 0.75rem; color: #64748b; text-transform: uppercase; font-weight: 700; }
 
+        /* ========= STATUS BAR ========= */
+        .status-bar {
+            display: flex; align-items: center;
+            justify-content: space-between; gap: 1rem;
+            margin-top: 1.5rem;
+            padding: 0.75rem 1.25rem;
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 14px; font-size: 0.78rem; color: #475569;
+        }
+        .status-left { display: flex; align-items: center; gap: 0.6rem; }
+        .status-right { color: #334155; font-variant-numeric: tabular-nums; }
+        .dot {
+            width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+            background: #34d399; box-shadow: 0 0 8px #34d399;
+            animation: pulse-dot 2s infinite;
+        }
+        .dot.loading { background: #f59e0b; box-shadow: 0 0 8px #f59e0b; }
+        .dot.error   { background: #f87171; box-shadow: 0 0 8px #f87171; animation: none; }
+        @keyframes pulse-dot {
+            0%, 100% { opacity: 1; } 50% { opacity: 0.3; }
+        }
+
         /* ========= TOAST ========= */
         #toast {
-            position: fixed; bottom: 2rem; left: 50%; transform: translateX(-50%) translateY(120px);
-            background: #1e293b; border: 1px solid rgba(255,255,255,0.1); color: #fff;
-            padding: 0.9rem 1.75rem; border-radius: 999px; font-weight: 600;
+            position: fixed; bottom: 2rem; left: 50%;
+            transform: translateX(-50%) translateY(120px);
+            background: #1e293b; border: 1px solid rgba(255,255,255,0.1);
+            color: #fff; padding: 0.9rem 1.75rem;
+            border-radius: 999px; font-weight: 600;
             z-index: 1000; opacity: 0; transition: 0.5s;
         }
         #toast.visible { opacity: 1; transform: translateX(-50%) translateY(0); }
         #toast.success { border-color: rgba(52,211,153,0.3); color: #6ee7b7; }
-        #toast.error { border-color: rgba(248,113,113,0.3); color: #fca5a5; }
+        #toast.error   { border-color: rgba(248,113,113,0.3); color: #fca5a5; }
 
         @media (max-width: 900px) {
             .controls { grid-template-columns: 1fr; }
@@ -196,28 +186,29 @@
     </header>
 
     <div class="tabs">
-        <button class="tab-btn active" onclick="switchTab('chartTab')">Genel İndeks</button>
+        <button class="tab-btn active" onclick="switchTab('chartTab', this)">Genel İndeks</button>
     </div>
 
     <div class="card">
-        <!-- CHART TAB -->
         <div id="chartTab" class="tab-content active">
             <div class="controls">
                 <div class="field-group">
-                    <label>Başlangıç Tarihi & Saati</label>
+                    <label>Başlangıç Tarihi &amp; Saati</label>
                     <div class="field-row">
-                        <input type="date" id="startDate"><input type="time" id="startTime">
+                        <input type="date" id="startDate">
+                        <input type="time" id="startTime">
                     </div>
                 </div>
                 <div class="field-group">
-                    <label>Bitiş Tarihi & Saati</label>
+                    <label>Bitiş Tarihi &amp; Saati</label>
                     <div class="field-row">
-                        <input type="date" id="endDate"><input type="time" id="endTime">
+                        <input type="date" id="endDate">
+                        <input type="time" id="endTime">
                     </div>
                 </div>
                 <div class="btn-group">
-                    <button id="btnFetch" class="btn btn-primary" onclick="fetchData()">Analiz Et</button>
-                    <button class="btn btn-success" onclick="fetchHistory()">Geçmişi Çek</button>
+                    <button class="btn btn-primary" onclick="fetchData()">Analiz Et</button>
+                    <button class="btn btn-refresh" onclick="manualRefresh()">🔄 Yenile</button>
                     <button class="btn btn-secondary" onclick="exportCSV()">CSV İndir</button>
                 </div>
             </div>
@@ -229,103 +220,137 @@
                 <div class="stat-box"><span class="stat-number max" id="statMax">—</span><span class="stat-label">En Yüksek</span></div>
                 <div class="stat-box"><span class="stat-number min" id="statMin">—</span><span class="stat-label">En Düşük</span></div>
             </div>
-        </div>
 
-        <!-- No Map Tab -->
+            <div class="status-bar">
+                <div class="status-left">
+                    <div class="dot" id="statusDot"></div>
+                    <span id="statusText">Başlatılıyor...</span>
+                </div>
+                <div class="status-right" id="nextRefreshText"></div>
+            </div>
+        </div>
     </div>
 </div>
 
 <div id="toast"></div>
 
 <script>
-// ========== TAB LOGIC ==========
-function switchTab(tabId) {
+// ========== HELPERS ==========
+const pad      = n => String(n).padStart(2, '0');
+const fmtDate  = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+const fmtTime  = d => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+const fmtClock = ()=> fmtTime(new Date());
+
+// ========== TAB ==========
+function switchTab(tabId, btn) {
     document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
     document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
     document.getElementById(tabId).classList.add('active');
-    event.target.classList.add('active');
+    btn.classList.add('active');
 }
-
-// ========== INITIAL DATES ==========
-const now = new Date();
-const yesterday = new Date(now - 24*3600*1000);
-const pad = n => String(n).padStart(2, '0');
-const fmtDate = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
-const fmtTime = d => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-
-// Default dates will be initialized async
-// document.getElementById('startDate').value = fmtDate(yesterday);
-// document.getElementById('startTime').value = fmtTime(yesterday);
-// ...
 
 // ========== TOAST ==========
 let toastTimer;
 function showToast(msg, type = 'info') {
     const t = document.getElementById('toast');
-    t.textContent = msg; t.className = `visible ${type}`;
+    t.textContent = msg;
+    t.className = `visible ${type}`;
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => t.className = '', 4000);
 }
 
-// ========== SQL.JS LOGIC ==========
-let db = null;
-let chart;
-
-async function initSqlJs() {
-    const SQL = await window.initSqlJs({ locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/${file}` });
-    // Cache-bust: her istekte yeni dosya indir (GitHub Actions her 5dk'da güncelliyor)
-    const cacheBust = Date.now();
-    const response = await fetch(`traffic_data.db?v=${cacheBust}`);
-    if(!response.ok) throw new Error(`Veritabanı indirilemedi! (HTTP ${response.status})`);
-    const buffer = await response.arrayBuffer();
-    db = new SQL.Database(new Uint8Array(buffer));
+// ========== STATUS BAR ==========
+function setStatus(text, state = 'ok') {
+    document.getElementById('statusDot').className =
+        'dot' + (state === 'loading' ? ' loading' : state === 'error' ? ' error' : '');
+    document.getElementById('statusText').textContent = text;
+}
+function setCountdown(secs) {
+    const el = document.getElementById('nextRefreshText');
+    if (secs <= 0) { el.textContent = ''; return; }
+    const m = Math.floor(secs / 60), s = secs % 60;
+    el.textContent = `Sonraki kontrol: ${m > 0 ? m + 'd ' : ''}${pad(s)}s`;
 }
 
+// ========== STATE ==========
+let SQL_ENGINE   = null;
+let db           = null;
+let chart        = null;
+let lastMaxDate  = null;
+let refreshTimer = null;
+let cdTimer      = null;
+
+const REFRESH_SEC = 5 * 60; // 5 dakika
+
+// ========== SQL.JS ==========
+async function loadSQL() {
+    if (!SQL_ENGINE) {
+        SQL_ENGINE = await window.initSqlJs({
+            locateFile: f => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/${f}`
+        });
+    }
+}
+
+async function downloadDB() {
+    const r = await fetch(`traffic_data.db?v=${Date.now()}`);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const buf = await r.arrayBuffer();
+    return new SQL_ENGINE.Database(new Uint8Array(buf));
+}
+
+function getMaxDate(database) {
+    const stmt = database.prepare("SELECT MAX(traffic_index_date) as mx FROM traffic_index");
+    let result = null;
+    if (stmt.step()) result = stmt.getAsObject().mx || null;
+    stmt.free();
+    return result;
+}
+
+// ========== PARAMS ==========
 function getParams() {
-    const sd = document.getElementById('startDate').value, st = document.getElementById('startTime').value;
-    const ed = document.getElementById('endDate').value, et = document.getElementById('endTime').value;
-    // DB'de tarihler YYYY-MM-DDTHH:MM:SS formatında saklanıyor
+    const sd = document.getElementById('startDate').value;
+    const st = document.getElementById('startTime').value;
+    const ed = document.getElementById('endDate').value;
+    const et = document.getElementById('endTime').value;
     return {
         start: sd && st ? `${sd}T${st}:00` : (sd ? `${sd}T00:00:00` : null),
         end:   ed && et ? `${ed}T${et}:59` : (ed ? `${ed}T23:59:59` : null)
     };
 }
 
+// ========== FETCH & RENDER ==========
 async function fetchData() {
-    if (!db) return showToast('Veritabanı henüz yüklenmedi, lütfen bekleyin...', 'info');
+    if (!db) { showToast('Veritabanı henüz yüklenmedi...', 'info'); return; }
     const { start, end } = getParams();
-    
-    let query = "SELECT traffic_index, traffic_index_date FROM traffic_index";
-    let conditions = [];
-    if (start && end) conditions.push(`traffic_index_date BETWEEN '${start}' AND '${end}'`);
-    else if (start) conditions.push(`traffic_index_date >= '${start}'`);
-    else if (end) conditions.push(`traffic_index_date <= '${end}'`);
-    
-    if (conditions.length > 0) query += " WHERE " + conditions.join(' AND ');
-    query += " ORDER BY traffic_index_date ASC";
+
+    let q = "SELECT traffic_index, traffic_index_date FROM traffic_index";
+    const conds = [];
+    if (start && end) conds.push(`traffic_index_date BETWEEN '${start}' AND '${end}'`);
+    else if (start)   conds.push(`traffic_index_date >= '${start}'`);
+    else if (end)     conds.push(`traffic_index_date <= '${end}'`);
+    if (conds.length) q += " WHERE " + conds.join(' AND ');
+    q += " ORDER BY traffic_index_date ASC";
 
     try {
-        const stmt = db.prepare(query);
+        const stmt = db.prepare(q);
         const data = [];
-        while(stmt.step()) {
-            data.push(stmt.getAsObject());
-        }
+        while (stmt.step()) data.push(stmt.getAsObject());
         stmt.free();
-        
-        if (data.length === 0) {
-            showToast('Seçilen tarih aralığında veri bulunamadı.', 'error');
-        } else {
-            showToast(`${data.length} kayıt yüklendi.`, 'success');
-        }
+
+        if (!data.length) showToast('Bu tarih aralığında veri yok.', 'error');
         renderChart(data);
         renderStats(data);
-    } catch(e) { showToast('Hata: ' + e.message, 'error'); console.error(e); }
+    } catch(e) {
+        showToast('Sorgu hatası: ' + e.message, 'error');
+        console.error(e);
+    }
 }
 
 function renderChart(data) {
-    const ctx = document.getElementById('trafficChart').getContext('2d');
+    const ctx  = document.getElementById('trafficChart').getContext('2d');
     const grad = ctx.createLinearGradient(0, 0, 0, 400);
-    grad.addColorStop(0, 'rgba(99,102,241,0.3)'); grad.addColorStop(1, 'rgba(99,102,241,0)');
+    grad.addColorStop(0, 'rgba(99,102,241,0.3)');
+    grad.addColorStop(1, 'rgba(99,102,241,0)');
 
     if (chart) chart.destroy();
     chart = new Chart(ctx, {
@@ -333,40 +358,46 @@ function renderChart(data) {
         data: {
             labels: data.map(d => d.traffic_index_date),
             datasets: [{
-                data: data.map(d => d.traffic_index), borderColor: '#818cf8', backgroundColor: grad,
+                data: data.map(d => d.traffic_index),
+                borderColor: '#818cf8',
+                backgroundColor: grad,
                 borderWidth: 3, fill: true, tension: 0.4, pointRadius: 0
             }]
         },
         options: {
-            responsive: true, maintainAspectRatio: false,
-            scales: { 
-                x: { 
-                    type: 'time', 
-                    time: { 
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                x: {
+                    type: 'time',
+                    time: {
                         unit: 'hour',
                         displayFormats: { hour: 'dd MMM HH:mm', day: 'dd MMM' },
                         tooltipFormat: 'dd MMM yyyy HH:mm'
-                    }, 
-                    display: true,
+                    },
                     ticks: { color: '#94a3b8', maxRotation: 45, minRotation: 45 },
-                    grid: { 
-                        color: function(context) {
-                            if (context.tick && context.tick.value) {
-                                const d = new Date(context.tick.value);
-                                if(d.getHours() === 0 && d.getMinutes() === 0) return 'rgba(255,255,255,0.4)';
+                    grid: {
+                        color: ctx2 => {
+                            if (ctx2.tick && ctx2.tick.value) {
+                                const d = new Date(ctx2.tick.value);
+                                if (d.getHours() === 0 && d.getMinutes() === 0)
+                                    return 'rgba(255,255,255,0.4)';
                             }
                             return 'rgba(255,255,255,0.05)';
                         },
-                        lineWidth: function(context) {
-                            if (context.tick && context.tick.value) {
-                                const d = new Date(context.tick.value);
-                                if(d.getHours() === 0 && d.getMinutes() === 0) return 2;
+                        lineWidth: ctx2 => {
+                            if (ctx2.tick && ctx2.tick.value) {
+                                const d = new Date(ctx2.tick.value);
+                                if (d.getHours() === 0 && d.getMinutes() === 0) return 2;
                             }
                             return 1;
                         }
                     }
                 },
-                y: { display: true, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } }
+                y: {
+                    ticks: { color: '#94a3b8' },
+                    grid: { color: 'rgba(255,255,255,0.05)' }
+                }
             },
             plugins: { legend: { display: false } }
         }
@@ -376,86 +407,130 @@ function renderChart(data) {
 function renderStats(data) {
     if (!data.length) return;
     const vals = data.map(d => d.traffic_index);
-    const avg = Math.round(vals.reduce((a,b)=>a+b,0)/vals.length);
-    document.getElementById('statAvg').textContent = avg;
+    document.getElementById('statAvg').textContent = Math.round(vals.reduce((a,b)=>a+b,0)/vals.length);
     document.getElementById('statMax').textContent = Math.max(...vals);
     document.getElementById('statMin').textContent = Math.min(...vals);
 }
 
+// ========== CSV ==========
 async function exportCSV() {
-    if (!db) return showToast('Veritabanı yüklü değil', 'error');
+    if (!db) { showToast('Veritabanı yüklü değil', 'error'); return; }
     const { start, end } = getParams();
-    
-    let query = "SELECT traffic_index, traffic_index_date FROM traffic_index";
-    let conditions = [];
-    if (start && end) conditions.push(`traffic_index_date BETWEEN '${start}' AND '${end}'`);
-    else if (start) conditions.push(`traffic_index_date >= '${start}'`);
-    if (conditions.length > 0) query += " WHERE " + conditions.join(' AND ');
-    query += " ORDER BY traffic_index_date ASC";
+    let q = "SELECT traffic_index, traffic_index_date FROM traffic_index";
+    const conds = [];
+    if (start && end) conds.push(`traffic_index_date BETWEEN '${start}' AND '${end}'`);
+    else if (start)   conds.push(`traffic_index_date >= '${start}'`);
+    if (conds.length) q += " WHERE " + conds.join(' AND ');
+    q += " ORDER BY traffic_index_date ASC";
 
     try {
-        const stmt = db.prepare(query);
-        let csvContent = "data:text/csv;charset=utf-8,Tarih,Trafik İndeksi\n";
+        const stmt = db.prepare(q);
+        let csv = "data:text/csv;charset=utf-8,Tarih,Trafik İndeksi\n";
         let hasData = false;
-        while(stmt.step()) {
+        while (stmt.step()) {
             hasData = true;
             const row = stmt.getAsObject();
-            csvContent += `${row.traffic_index_date},${row.traffic_index}\n`;
+            csv += `${row.traffic_index_date},${row.traffic_index}\n`;
         }
         stmt.free();
-
-        if (!hasData) return showToast("Dışa aktarılacak veri bulunamadı.", "error");
-
-        const encodedUri = encodeURI(csvContent);
-        const link = document.createElement("a");
-        link.setAttribute("href", encodedUri);
-        link.setAttribute("download", `trafik_verisi_${Date.now()}.csv`);
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        showToast("Veri başarıyla indirildi", "success");
+        if (!hasData) { showToast("Dışa aktarılacak veri yok.", "error"); return; }
+        const a = document.createElement("a");
+        a.href = encodeURI(csv);
+        a.download = `trafik_${Date.now()}.csv`;
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        showToast("CSV indirildi", "success");
     } catch(e) { showToast('Hata: ' + e.message, 'error'); }
 }
 
-async function fetchHistory() {
-    showToast('Tarihsel veriler Github Actions ile sunucu arkasında otomatik güncellenmektedir.', 'info');
+// ========== AUTO-REFRESH ==========
+function startCountdown() {
+    clearInterval(cdTimer);
+    let secs = REFRESH_SEC;
+    setCountdown(secs);
+    cdTimer = setInterval(() => {
+        secs--;
+        if (secs <= 0) { clearInterval(cdTimer); setCountdown(0); }
+        else setCountdown(secs);
+    }, 1000);
 }
 
+async function silentRefresh() {
+    try {
+        setStatus('Güncelleme kontrol ediliyor...', 'loading');
+        const newDb  = await downloadDB();
+        const newMax = getMaxDate(newDb);
+
+        if (newMax && newMax !== lastMaxDate) {
+            // Yeni veri var — DB değiştir
+            if (db) db.close();
+            db = newDb;
+            lastMaxDate = newMax;
+
+            // Tarih aralığını yeni max'a kaydır
+            const end   = new Date(newMax.replace('T', ' '));
+            const start = new Date(end.getTime() - 24 * 3600 * 1000);
+            document.getElementById('startDate').value = fmtDate(start);
+            document.getElementById('startTime').value = fmtTime(start);
+            document.getElementById('endDate').value   = fmtDate(end);
+            document.getElementById('endTime').value   = fmtTime(end);
+
+            await fetchData();
+            setStatus(`Güncellendi: ${fmtClock()} ✓`, 'ok');
+            showToast('Yeni veri geldi — grafik güncellendi!', 'success');
+        } else {
+            newDb.close();
+            setStatus(`Son kontrol: ${fmtClock()} — değişiklik yok`, 'ok');
+        }
+    } catch(e) {
+        setStatus('Güncelleme hatası: ' + e.message, 'error');
+        console.warn('silentRefresh:', e);
+    }
+    startCountdown();
+}
+
+async function manualRefresh() {
+    clearInterval(refreshTimer);
+    clearInterval(cdTimer);
+    await silentRefresh();
+    refreshTimer = setInterval(silentRefresh, REFRESH_SEC * 1000);
+}
+
+// ========== INIT ==========
 async function initApp() {
     try {
-        showToast('Veritabanı indiriliyor, lütfen bekleyin...', 'info');
-        await initSqlJs();
-        
-        // DB'deki en son tarihe göre varsayılan tarih aralığını ayarla
-        const stmt = db.prepare("SELECT MAX(traffic_index_date) as max_date, MIN(traffic_index_date) as min_date FROM traffic_index");
-        if(stmt.step()){
-            const row = stmt.getAsObject();
-            if (row.max_date) {
-                // Normalize: sadece YYYY-MM-DDTHH:MM:SS al
-                const maxStr = String(row.max_date).substring(0, 19);
-                const endIdx = new Date(maxStr.replace('T', ' '));
-                const startIdx = new Date(endIdx.getTime() - 24*3600*1000);
-                document.getElementById('startDate').value = fmtDate(startIdx);
-                document.getElementById('startTime').value = fmtTime(startIdx);
-                document.getElementById('endDate').value   = fmtDate(endIdx);
-                document.getElementById('endTime').value   = fmtTime(endIdx);
-            }
+        setStatus('Veritabanı indiriliyor...', 'loading');
+        await loadSQL();
+        db = await downloadDB();
+        lastMaxDate = getMaxDate(db);
+
+        if (lastMaxDate) {
+            const end   = new Date(lastMaxDate.replace('T', ' '));
+            const start = new Date(end.getTime() - 24 * 3600 * 1000);
+            document.getElementById('startDate').value = fmtDate(start);
+            document.getElementById('startTime').value = fmtTime(start);
+            document.getElementById('endDate').value   = fmtDate(end);
+            document.getElementById('endTime').value   = fmtTime(end);
         }
-        stmt.free();
-        showToast('Veritabanı başarıyla yüklendi!', 'success');
+
+        await fetchData();
+        setStatus(`Yüklendi: ${fmtClock()}`, 'ok');
+
+        // Her 5 dakikada arka planda sessiz kontrol
+        startCountdown();
+        refreshTimer = setInterval(silentRefresh, REFRESH_SEC * 1000);
+
     } catch(e) {
-        console.warn("DB yüklenirken hata:", e);
-        showToast('DB yükleme hatası: ' + e.message, 'error');
-        document.getElementById('startDate').value = fmtDate(yesterday);
-        document.getElementById('startTime').value = fmtTime(yesterday);
+        console.error("initApp hatası:", e);
+        setStatus('Yükleme hatası: ' + e.message, 'error');
+        const now = new Date();
+        const yst = new Date(now - 24 * 3600 * 1000);
+        document.getElementById('startDate').value = fmtDate(yst);
+        document.getElementById('startTime').value = fmtTime(yst);
         document.getElementById('endDate').value   = fmtDate(now);
         document.getElementById('endTime').value   = fmtTime(now);
     }
-    
-    await fetchData();
 }
 
-// Init
 initApp();
 </script>
 </body>
