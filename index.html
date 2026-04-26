@@ -196,14 +196,14 @@
                     <label>Başlangıç Tarihi &amp; Saati</label>
                     <div class="field-row">
                         <input type="date" id="startDate">
-                        <input type="time" id="startTime">
+                        <input type="time" id="startTime" value="00:00">
                     </div>
                 </div>
                 <div class="field-group">
                     <label>Bitiş Tarihi &amp; Saati</label>
                     <div class="field-row">
                         <input type="date" id="endDate">
-                        <input type="time" id="endTime">
+                        <input type="time" id="endTime" value="00:00">
                     </div>
                 </div>
                 <div class="btn-group">
@@ -240,6 +240,31 @@ const pad      = n => String(n).padStart(2, '0');
 const fmtDate  = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
 const fmtTime  = d => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 const fmtClock = ()=> fmtTime(new Date());
+const DEFAULT_TIME = '00:00';
+const END_DATE_OFFSET_DAYS = 3;
+
+function getShiftedDate(baseDate, dayOffset) {
+    return new Date(baseDate.getTime() + dayOffset * 24 * 3600 * 1000);
+}
+
+function getAutoEndTimeForDate(dateValue) {
+    if (!dateValue) return DEFAULT_TIME;
+    return fmtTime(new Date());
+}
+
+function applyEndTimeAuto() {
+    const endDateValue = document.getElementById('endDate').value;
+    document.getElementById('endTime').value = getAutoEndTimeForDate(endDateValue);
+}
+
+function applyAutoDateRangeFromNow() {
+    const end = getShiftedDate(new Date(), -END_DATE_OFFSET_DAYS);
+    const start = getShiftedDate(end, -1);
+    document.getElementById('startDate').value = fmtDate(start);
+    document.getElementById('startTime').value = DEFAULT_TIME;
+    document.getElementById('endDate').value = fmtDate(end);
+    applyEndTimeAuto();
+}
 
 // ========== TAB ==========
 function switchTab(tabId, btn) {
@@ -467,12 +492,12 @@ async function silentRefresh() {
             lastMaxDate = newMax;
 
             // Tarih aralığını yeni max'a kaydır
-            const end   = new Date(newMax.replace('T', ' '));
-            const start = new Date(end.getTime() - 24 * 3600 * 1000);
+            const end = getShiftedDate(new Date(), -END_DATE_OFFSET_DAYS);
+            const start = getShiftedDate(end, -1);
             document.getElementById('startDate').value = fmtDate(start);
-            document.getElementById('startTime').value = fmtTime(start);
+            document.getElementById('startTime').value = DEFAULT_TIME;
             document.getElementById('endDate').value   = fmtDate(end);
-            document.getElementById('endTime').value   = fmtTime(end);
+            applyEndTimeAuto();
 
             await fetchData();
             setStatus(`Güncellendi: ${fmtClock()} ✓`, 'ok');
@@ -499,17 +524,14 @@ async function manualRefresh() {
 async function initApp() {
     try {
         setStatus('Veritabanı indiriliyor...', 'loading');
+        // Her durumda varsayılan tarih/saatleri otomatik ata.
+        applyAutoDateRangeFromNow();
         await loadSQL();
         db = await downloadDB();
         lastMaxDate = getMaxDate(db);
 
         if (lastMaxDate) {
-            const end   = new Date(lastMaxDate.replace('T', ' '));
-            const start = new Date(end.getTime() - 24 * 3600 * 1000);
-            document.getElementById('startDate').value = fmtDate(start);
-            document.getElementById('startTime').value = fmtTime(start);
-            document.getElementById('endDate').value   = fmtDate(end);
-            document.getElementById('endTime').value   = fmtTime(end);
+            applyAutoDateRangeFromNow();
         }
 
         await fetchData();
@@ -522,15 +544,11 @@ async function initApp() {
     } catch(e) {
         console.error("initApp hatası:", e);
         setStatus('Yükleme hatası: ' + e.message, 'error');
-        const now = new Date();
-        const yst = new Date(now - 24 * 3600 * 1000);
-        document.getElementById('startDate').value = fmtDate(yst);
-        document.getElementById('startTime').value = fmtTime(yst);
-        document.getElementById('endDate').value   = fmtDate(now);
-        document.getElementById('endTime').value   = fmtTime(now);
+        applyAutoDateRangeFromNow();
     }
 }
 
+document.getElementById('endDate').addEventListener('change', applyEndTimeAuto);
 initApp();
 </script>
 </body>
