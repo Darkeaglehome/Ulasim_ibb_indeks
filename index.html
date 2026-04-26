@@ -241,7 +241,7 @@ const fmtDate  = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate
 const fmtTime  = d => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 const fmtClock = ()=> fmtTime(new Date());
 const DEFAULT_TIME = '00:00';
-const END_DATE_OFFSET_DAYS = 3;
+const END_DATE_OFFSET_DAYS = 0;
 
 function getShiftedDate(baseDate, dayOffset) {
     return new Date(baseDate.getTime() + dayOffset * 24 * 3600 * 1000);
