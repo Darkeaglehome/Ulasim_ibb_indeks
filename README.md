@@ -2,8 +2,6 @@
 
 Bu proje, İstanbul Büyükşehir Belediyesi'nin trafik verilerini çekerek, analiz etmenizi ve grafikler üzerinden görselleştirmenizi sağlayan bir web uygulamasıdır.
 
-https://darkeaglehome.github.io/Ulasim_ibb_indeks/ yüklenmiş olup localde çalıştırılması tavsiye edilir...
-
 ## Özellikler
 
 - **Trafik İndeksi Grafiği:** Belirli tarih aralıklarındaki trafik yoğunluğunu görselleştirir.
