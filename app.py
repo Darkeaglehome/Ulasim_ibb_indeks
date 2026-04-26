@@ -4,8 +4,13 @@ import os
 import csv
 import requests
 from datetime import datetime
+import threading
+import time
+from fetch_traffic import setup_db as setup_traffic_db, fetch_and_save
 
 app = Flask(__name__, static_folder='.', static_url_path='')
+UPDATE_INTERVAL_SECONDS = 15 * 60
+_updater_started = False
 
 # Disable caching for development
 @app.after_request
@@ -16,6 +21,55 @@ def add_header(response):
     return response
 
 DB_NAME = "traffic_data.db"
+
+def fetch_and_store_history(days: str):
+    api_url = f"https://api.ibb.gov.tr/tkmservices/api/TrafficData/v1/TrafficIndexHistory/{days}/5M"
+    response = requests.get(api_url)
+    response.raise_for_status()
+    data = response.json()
+
+    if not data:
+        return 0
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    new_records = 0
+
+    for item in data:
+        idx = item.get("TrafficIndex")
+        date_str = item.get("TrafficIndexDate")
+        if date_str:
+            date_str = str(date_str)[:19]
+        try:
+            cursor.execute(
+                "INSERT OR IGNORE INTO traffic_index (traffic_index, traffic_index_date) VALUES (?, ?)",
+                (idx, date_str)
+            )
+            if cursor.rowcount > 0:
+                new_records += 1
+        except Exception:
+            pass
+
+    conn.commit()
+    conn.close()
+    return new_records
+
+def periodic_index_updater():
+    while True:
+        try:
+            fetch_and_save()
+        except Exception as e:
+            print(f"Periyodik indeks güncelleme hatası: {e}")
+        time.sleep(UPDATE_INTERVAL_SECONDS)
+
+def start_periodic_updater_once():
+    global _updater_started
+    if _updater_started:
+        return
+
+    threading.Thread(target=periodic_index_updater, daemon=True).start()
+    _updater_started = True
+    print("Periyodik indeks güncelleme başlatıldı (15 dakika).")
 
 def get_db_connection():
     conn = sqlite3.connect(DB_NAME)
@@ -68,36 +122,8 @@ def fetch_history():
     if not days.isdigit():
         return jsonify({"success": False, "message": "Geçersiz gün sayısı."}), 400
         
-    api_url = f"https://api.ibb.gov.tr/tkmservices/api/TrafficData/v1/TrafficIndexHistory/{days}/5M"
-    
     try:
-        response = requests.get(api_url)
-        response.raise_for_status()
-        data = response.json()
-        
-        if not data:
-             return jsonify({"success": False, "message": "API'den veri alınamadı."}), 404
-             
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        new_records = 0
-        for item in data:
-            idx = item.get("TrafficIndex")
-            date_str = item.get("TrafficIndexDate")
-            try:
-                cursor.execute(
-                    "INSERT OR IGNORE INTO traffic_index (traffic_index, traffic_index_date) VALUES (?, ?)",
-                    (idx, date_str)
-                )
-                if cursor.rowcount > 0:
-                    new_records += 1
-            except Exception as e:
-                pass # Ignore individual insert errors
-                
-        conn.commit()
-        conn.close()
-        
+        new_records = fetch_and_store_history(days)
         return jsonify({"success": True, "message": f"{days} günlük veri çekildi. {new_records} yeni kayıt eklendi."})
     except Exception as e:
          return jsonify({"success": False, "message": f"Veri çekilirken hata oluştu: {str(e)}"}), 500
@@ -142,4 +168,9 @@ def export_csv():
         return jsonify({"success": False, "message": f"Hata: {str(e)}"}), 500
 
 if __name__ == '__main__':
-    app.run(debug=True, port=8080)
+    debug_mode = True
+    setup_traffic_db()
+    # Werkzeug reloader açıkken thread'in iki kez başlamasını engelle.
+    if not debug_mode or os.environ.get("WERKZEUG_RUN_MAIN") == "true":
+        start_periodic_updater_once()
+    app.run(debug=debug_mode, port=8080)
