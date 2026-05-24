@@ -1,0 +1,710 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>İBB Trafik Analizi</title>
+    <meta name="description" content="İstanbul Büyükşehir Belediyesi trafik yoğunluk verilerini analiz edin.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+
+    <!-- Chart.js + Luxon -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/luxon@3.3.0/build/global/luxon.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-luxon@1.3.1/dist/chartjs-adapter-luxon.umd.min.js"></script>
+
+    <style>
+        *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            min-height: 100vh;
+            background: #0a0c12;
+            color: #fff;
+            overflow-x: hidden;
+        }
+
+        /* ========= BACKGROUND ========= */
+        .bg-layer {
+            position: fixed; inset: 0;
+            background-image: url('background.png');
+            background-size: cover; background-position: center;
+            z-index: 0;
+        }
+        .bg-overlay {
+            position: fixed; inset: 0;
+            background: linear-gradient(135deg, rgba(5,7,15,0.88) 0%, rgba(10,12,25,0.82) 50%, rgba(5,7,15,0.90) 100%);
+            z-index: 1;
+        }
+
+        /* ========= LAYOUT ========= */
+        .page {
+            position: relative; z-index: 2;
+            max-width: 1280px; margin: 0 auto;
+            padding: 2.5rem 1.5rem 4rem;
+        }
+
+        /* ========= HEADER ========= */
+        .header { text-align: center; margin-bottom: 2rem; }
+        .header h1 {
+            font-size: clamp(2rem, 5vw, 3.8rem);
+            font-weight: 900; letter-spacing: -0.04em;
+            background: linear-gradient(135deg, #fff 0%, #a5b4fc 60%, #818cf8 100%);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            margin-bottom: 1rem;
+        }
+        .top-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.45rem;
+            font-size: 0.76rem;
+            color: #94a3b8;
+            padding: 0.35rem 0.7rem;
+            border-radius: 999px;
+            border: 1px solid rgba(255,255,255,0.1);
+            background: rgba(15,18,32,0.55);
+        }
+
+        /* ========= TABS ========= */
+        .tabs { display: flex; justify-content: center; gap: 1rem; margin-bottom: 2rem; }
+        .tab-btn {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            color: #94a3b8; padding: 0.75rem 2rem;
+            border-radius: 99px; font-weight: 600;
+            cursor: pointer; transition: all 0.2s;
+        }
+        .tab-btn.active {
+            background: rgba(99,102,241,0.2);
+            border-color: rgba(99,102,241,0.5); color: #fff;
+        }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; animation: fadeIn 0.4s; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* ========= CARD ========= */
+        .card {
+            background: rgba(15,18,32,0.7);
+            border: 1px solid rgba(255,255,255,0.07);
+            border-radius: 28px; padding: 2.25rem;
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            box-shadow: 0 32px 64px -16px rgba(0,0,0,0.6);
+        }
+
+        /* ========= CONTROLS ========= */
+        .controls {
+            display: grid;
+            grid-template-columns: 1fr 1fr auto;
+            gap: 1.5rem; align-items: end; margin-bottom: 2rem;
+        }
+        .field-group { display: flex; flex-direction: column; gap: 0.6rem; }
+        .field-group label {
+            font-size: 0.72rem; font-weight: 700;
+            color: #475569; text-transform: uppercase;
+        }
+        .field-row { display: flex; gap: 0.5rem; }
+
+        input[type="date"], input[type="time"] {
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 12px; padding: 0.8rem;
+            color: #e2e8f0; font-size: 0.9rem; color-scheme: dark;
+        }
+        input[type="date"] { flex: 1.6; }
+        input[type="time"] { flex: 1; }
+
+        /* ========= BUTTONS ========= */
+        .btn-group { display: flex; flex-direction: column; gap: 0.5rem; }
+        .btn {
+            border: none; border-radius: 12px;
+            padding: 0.85rem 1.25rem; font-weight: 600;
+            cursor: pointer; color: #fff;
+            display: flex; align-items: center;
+            justify-content: center; gap: 0.5rem; transition: 0.2s;
+        }
+        .btn:hover { transform: translateY(-2px); }
+        .btn-primary  { background: linear-gradient(135deg, #6366f1, #4f46e5); }
+        .btn-secondary{ background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); color: #cbd5e1; }
+        .btn-refresh  { background: rgba(99,102,241,0.12); border: 1px solid rgba(99,102,241,0.3); color: #a5b4fc; }
+
+        /* ========= CHART & STATS ========= */
+        .chart-area { height: 400px; margin-bottom: 2rem; }
+        .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
+        .stat-box {
+            background: rgba(255,255,255,0.025);
+            border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 20px; padding: 1.5rem; text-align: center;
+        }
+        .stat-number { font-size: 2.2rem; font-weight: 900; display: block; margin-bottom: 0.2rem; }
+        .stat-number.avg { color: #818cf8; }
+        .stat-number.max { color: #f87171; }
+        .stat-number.min { color: #34d399; }
+        .stat-label { font-size: 0.75rem; color: #64748b; text-transform: uppercase; font-weight: 700; }
+        .bar-analysis {
+            margin-top: 1rem;
+            background: rgba(255,255,255,0.025);
+            border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 20px;
+            padding: 1rem 1.1rem;
+        }
+        .bar-header {
+            display: flex;
+            justify-content: space-between;
+            gap: 0.8rem;
+            align-items: center;
+            margin-bottom: 0.8rem;
+        }
+        .bar-title { font-size: 0.86rem; color: #e2e8f0; font-weight: 600; }
+        .bar-range { font-size: 0.74rem; color: #64748b; }
+        .bar-grid {
+            display: flex;
+            gap: 0.65rem;
+            align-items: end;
+            min-height: 190px;
+            justify-content: space-between;
+        }
+        .bar-card {
+            flex: 1;
+            background: rgba(255,255,255,0.02);
+            border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 14px;
+            padding: 0.55rem;
+        }
+        .bar-label { font-size: 0.74rem; color: #94a3b8; margin-bottom: 0.28rem; }
+        .bar-day { font-size: 0.78rem; font-weight: 700; color: #e2e8f0; text-align: center; }
+        .bar-meta { font-size: 0.85rem; color: #94a3b8; margin-top: 0.22rem; text-align: center; line-height: 1.35; }
+        .bar-track {
+            margin-top: 0.35rem;
+            width: 100%;
+            height: 120px;
+            border-radius: 12px;
+            background: rgba(148,163,184,0.2);
+            overflow: hidden;
+            display: flex;
+            align-items: flex-end;
+        }
+        .bar-fill {
+            width: 100%;
+            height: 0%;
+            border-radius: 10px 10px 0 0;
+            transition: height 0.35s ease;
+        }
+        .bar-fill.high { background: linear-gradient(90deg, #f97316, #ef4444); }
+        .bar-fill.low  { background: linear-gradient(90deg, #22c55e, #14b8a6); }
+        .bar-fill.mid  { background: linear-gradient(90deg, #3b82f6, #6366f1); }
+        .bar-value { margin-top: 0.3rem; font-size: 0.76rem; color: #cbd5e1; }
+        .bar-insight {
+            margin-top: 0.85rem;
+            font-size: 0.82rem;
+            color: #cbd5e1;
+            line-height: 1.5;
+        }
+
+        /* ========= STATUS BAR ========= */
+        .status-bar {
+            display: flex; align-items: center;
+            justify-content: space-between; gap: 1rem;
+            margin-top: 1.5rem;
+            padding: 0.75rem 1.25rem;
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 14px; font-size: 0.78rem; color: #475569;
+        }
+        .status-left { display: flex; align-items: center; gap: 0.6rem; }
+        .status-right { color: #334155; font-variant-numeric: tabular-nums; }
+        .dot {
+            width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+            background: #34d399; box-shadow: 0 0 8px #34d399;
+            animation: pulse-dot 2s infinite;
+        }
+        .dot.loading { background: #f59e0b; box-shadow: 0 0 8px #f59e0b; }
+        .dot.error   { background: #f87171; box-shadow: 0 0 8px #f87171; animation: none; }
+        @keyframes pulse-dot {
+            0%, 100% { opacity: 1; } 50% { opacity: 0.3; }
+        }
+
+        /* ========= TOAST ========= */
+        #toast {
+            position: fixed; bottom: 2rem; left: 50%;
+            transform: translateX(-50%) translateY(120px);
+            background: #1e293b; border: 1px solid rgba(255,255,255,0.1);
+            color: #fff; padding: 0.9rem 1.75rem;
+            border-radius: 999px; font-weight: 600;
+            z-index: 1000; opacity: 0; transition: 0.5s;
+        }
+        #toast.visible { opacity: 1; transform: translateX(-50%) translateY(0); }
+        #toast.success { border-color: rgba(52,211,153,0.3); color: #6ee7b7; }
+        #toast.error   { border-color: rgba(248,113,113,0.3); color: #fca5a5; }
+
+        @media (max-width: 900px) {
+            .controls { grid-template-columns: 1fr; }
+            .btn-group { flex-direction: row; flex-wrap: wrap; }
+            .btn { flex: 1; }
+            .bar-grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="bg-layer"></div>
+<div class="bg-overlay"></div>
+
+<div class="page">
+    <header class="header">
+        <h1>Trafik Analiz Paneli</h1>
+        <div class="top-status">
+            <span class="dot" id="topStatusDot"></span>
+            <span id="topStatusText">Başlatılıyor...</span>
+        </div>
+    </header>
+
+    <div class="tabs">
+        <button class="tab-btn active" onclick="switchTab('chartTab', this)">Genel İndeks</button>
+    </div>
+
+    <div class="card">
+        <div id="chartTab" class="tab-content active">
+            <div class="controls">
+                <div class="field-group">
+                    <label>Başlangıç Tarihi &amp; Saati</label>
+                    <div class="field-row">
+                        <input type="date" id="startDate">
+                        <input type="time" id="startTime" value="00:00">
+                    </div>
+                </div>
+                <div class="field-group">
+                    <label>Bitiş Tarihi &amp; Saati</label>
+                    <div class="field-row">
+                        <input type="date" id="endDate">
+                        <input type="time" id="endTime" value="00:00">
+                    </div>
+                </div>
+                <div class="btn-group">
+                    <button class="btn btn-primary" onclick="fetchData()">Analiz Et</button>
+                    <button class="btn btn-refresh" onclick="manualRefresh()">🔄 Yenile</button>
+                    <button class="btn btn-secondary" onclick="exportCSV()">📊 Excel İndir</button>
+                </div>
+            </div>
+
+            <div class="chart-area"><canvas id="trafficChart"></canvas></div>
+
+            <div class="bar-analysis">
+                <div class="bar-header">
+                    <div class="bar-title">Gun Analizi</div>
+                    <div class="bar-range" id="barRange">-</div>
+                </div>
+                <div class="bar-grid" id="weekdayBars"></div>
+                <div class="bar-insight" id="barInsight">
+                    Veri secildiginde otomatik gun analizi burada gorunecektir.
+                </div>
+            </div>
+
+            <div class="status-bar">
+                <div class="status-left">
+                    <div class="dot" id="statusDot"></div>
+                    <span id="statusText">Başlatılıyor...</span>
+                </div>
+                <div class="status-right" id="nextRefreshText"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ========== HELPERS ==========
+const pad      = n => String(n).padStart(2, '0');
+const fmtDate  = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+const fmtTime  = d => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+const fmtClock = ()=> fmtTime(new Date());
+const DEFAULT_TIME = '00:00';
+const END_DATE_OFFSET_DAYS = 0;
+
+function getShiftedDate(baseDate, dayOffset) {
+    return new Date(baseDate.getTime() + dayOffset * 24 * 3600 * 1000);
+}
+
+function getAutoEndTimeForDate(dateValue) {
+    if (!dateValue) return DEFAULT_TIME;
+    return fmtTime(new Date());
+}
+
+function applyEndTimeAuto() {
+    const endDateValue = document.getElementById('endDate').value;
+    document.getElementById('endTime').value = getAutoEndTimeForDate(endDateValue);
+}
+
+function applyAutoDateRangeFromNow() {
+    const end = getShiftedDate(new Date(), -END_DATE_OFFSET_DAYS);
+    const start = getShiftedDate(end, -7);
+    document.getElementById('startDate').value = fmtDate(start);
+    document.getElementById('startTime').value = DEFAULT_TIME;
+    document.getElementById('endDate').value = fmtDate(end);
+    applyEndTimeAuto();
+}
+
+// ========== TAB ==========
+function switchTab(tabId, btn) {
+    document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+    document.getElementById(tabId).classList.add('active');
+    btn.classList.add('active');
+}
+
+// ========== TOAST ==========
+let toastTimer;
+function showToast(msg, type = 'info') {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className = `visible ${type}`;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.className = '', 4000);
+}
+
+// ========== STATUS BAR ==========
+function setStatus(text, state = 'ok') {
+    const dotClass = 'dot' + (state === 'loading' ? ' loading' : state === 'error' ? ' error' : '');
+    document.getElementById('statusDot').className = dotClass;
+    document.getElementById('topStatusDot').className = dotClass;
+    document.getElementById('statusText').textContent = text;
+    document.getElementById('topStatusText').textContent = text;
+}
+function setCountdown(secs) {
+    const el = document.getElementById('nextRefreshText');
+    if (secs <= 0) { el.textContent = ''; return; }
+    const m = Math.floor(secs / 60), s = secs % 60;
+    el.textContent = `Sonraki kontrol: ${m > 0 ? m + 'd ' : ''}${pad(s)}s`;
+}
+
+// ========== STATE ==========
+const API_BASE   = 'https://1.darkeaglehome.workers.dev';
+let chart        = null;
+let lastMaxDate  = null;
+let refreshTimer = null;
+let cdTimer      = null;
+
+const REFRESH_SEC = 60 * 60; // 1 saat
+
+async function getLatestDate() {
+    try {
+        const r = await fetch(`${API_BASE}/api/latest-dates`);
+        const data = await r.json();
+        return data.traffic_index;
+    } catch (e) {
+        console.error("Latest date fetch error:", e);
+        return null;
+    }
+}
+
+// ========== PARAMS ==========
+function getParams() {
+    const sd = document.getElementById('startDate').value;
+    const st = document.getElementById('startTime').value;
+    const ed = document.getElementById('endDate').value;
+    const et = document.getElementById('endTime').value;
+    return {
+        start: sd && st ? `${sd}T${st}:00` : (sd ? `${sd}T00:00:00` : null),
+        end:   ed && et ? `${ed}T${et}:59` : (ed ? `${ed}T23:59:59` : null)
+    };
+}
+
+// ========== FETCH & RENDER ==========
+async function fetchData() {
+    setStatus('Veriler getiriliyor...', 'loading');
+    const { start, end } = getParams();
+
+    let url = `${API_BASE}/api/traffic`;
+    const params = new URLSearchParams();
+    if (start) params.append('start', start);
+    if (end) params.append('end', end);
+    if (params.toString()) url += '?' + params.toString();
+
+    try {
+        const response = await fetch(url);
+        const data = await response.json();
+
+        if (data.error) throw new Error(data.error);
+
+        if (!data.length) {
+            showToast('Bu tarih aralığında veri yok.', 'error');
+            resetBarAnalysis('Seçili aralıkta veri bulunamadı.');
+        } else {
+            renderChart(data);
+            renderAnalysis(data);
+            setStatus(`Yüklendi: ${fmtClock()}`, 'ok');
+        }
+    } catch(e) {
+        showToast('Veri çekme hatası: ' + e.message, 'error');
+        setStatus('Bağlantı hatası', 'error');
+        console.error(e);
+    }
+}
+
+function renderChart(data) {
+    const ctx  = document.getElementById('trafficChart').getContext('2d');
+    const grad = ctx.createLinearGradient(0, 0, 0, 400);
+    grad.addColorStop(0, 'rgba(99,102,241,0.3)');
+    grad.addColorStop(1, 'rgba(99,102,241,0)');
+
+    if (chart) chart.destroy();
+    chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: data.map(d => d.traffic_index_date),
+            datasets: [{
+                data: data.map(d => d.traffic_index),
+                borderColor: '#818cf8',
+                backgroundColor: grad,
+                borderWidth: 3, fill: true, tension: 0.4, pointRadius: 0
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                x: {
+                    type: 'time',
+                    time: {
+                        unit: 'hour',
+                        displayFormats: { hour: 'dd MMM HH:mm', day: 'dd MMM' },
+                        tooltipFormat: 'dd MMM yyyy HH:mm'
+                    },
+                    ticks: { color: '#94a3b8', maxRotation: 45, minRotation: 45 },
+                    grid: {
+                        color: ctx2 => {
+                            if (ctx2.tick && ctx2.tick.value) {
+                                const d = new Date(ctx2.tick.value);
+                                if (d.getHours() === 0 && d.getMinutes() === 0)
+                                    return 'rgba(255,255,255,0.4)';
+                            }
+                            return 'rgba(255,255,255,0.05)';
+                        },
+                        lineWidth: ctx2 => {
+                            if (ctx2.tick && ctx2.tick.value) {
+                                const d = new Date(ctx2.tick.value);
+                                if (d.getHours() === 0 && d.getMinutes() === 0) return 2;
+                            }
+                            return 1;
+                        }
+                    }
+                },
+                y: {
+                    ticks: { color: '#94a3b8' },
+                    grid: { color: 'rgba(255,255,255,0.05)' }
+                }
+            },
+            plugins: { legend: { display: false } }
+        }
+    });
+}
+
+function formatDateLabel(dateKey) {
+    const dt = new Date(`${dateKey}T00:00:00`);
+    return new Intl.DateTimeFormat('tr-TR', { day: 'numeric', month: 'long' }).format(dt);
+}
+
+const WEEKDAY_TR = ['Pazar', 'Pazartesi', 'Sali', 'Carsamba', 'Persembe', 'Cuma', 'Cumartesi'];
+const WEEKDAY_ORDER = [1, 2, 3, 4, 5, 6, 0]; // Pazartesi -> Pazar
+
+function resetBarAnalysis(message = 'Veri secildiginde otomatik gun analizi burada gorunecektir.') {
+    document.getElementById('barRange').textContent = '-';
+    document.getElementById('weekdayBars').innerHTML = '';
+    document.getElementById('barInsight').textContent = message;
+}
+
+function parseTrafficDate(dateStr) {
+    if (!dateStr) return null;
+    const clean = String(dateStr).slice(0, 19);
+    const [datePart, timePart = '00:00:00'] = clean.split('T');
+    const [y, m, d] = datePart.split('-').map(Number);
+    const [hh, mm, ss] = timePart.split(':').map(Number);
+    if (![y, m, d, hh, mm].every(Number.isFinite)) return null;
+    return new Date(y, (m || 1) - 1, d || 1, hh || 0, mm || 0, ss || 0);
+}
+
+function getBarColor(value, min, max) {
+    if (!Number.isFinite(value)) return 'hsl(200, 70%, 55%)';
+    if (max <= min) return 'hsl(40, 85%, 55%)';
+    const ratio = (value - min) / (max - min);
+    const hue = Math.round(120 - (120 * ratio)); // green -> red
+    return `hsl(${hue}, 80%, 52%)`;
+}
+
+function renderAnalysis(data) {
+    if (!data.length) {
+        resetBarAnalysis('Secili aralikta analiz edilecek veri bulunamadi.');
+        return;
+    }
+
+    const dayAgg = new Map();
+    let maxPoint = { value: -Infinity, raw: null };
+    let minPoint = { value: Infinity, raw: null };
+
+    for (const row of data) {
+        const dt = parseTrafficDate(row.traffic_index_date);
+        if (Number.isNaN(dt.getTime())) continue;
+        const weekday = dt.getDay();
+        const value = Number(row.traffic_index);
+        if (!Number.isFinite(value)) continue;
+
+        if (!dayAgg.has(weekday)) {
+            dayAgg.set(weekday, { sum: 0, count: 0, max: -Infinity, min: Infinity, maxRaw: null, minRaw: null });
+        }
+        const dayItem = dayAgg.get(weekday);
+        dayItem.sum += value;
+        dayItem.count += 1;
+        if (value > dayItem.max) { dayItem.max = value; dayItem.maxRaw = row.traffic_index_date; }
+        if (value < dayItem.min) { dayItem.min = value; dayItem.minRaw = row.traffic_index_date; }
+
+        if (value > maxPoint.value) maxPoint = { value, raw: row.traffic_index_date };
+        if (value < minPoint.value) minPoint = { value, raw: row.traffic_index_date };
+    }
+
+    if (!dayAgg.size) {
+        resetBarAnalysis('Veri formati uygun olmadigi icin analiz yapilamadi.');
+        return;
+    }
+
+    let maxDay = null, minDay = null, maxDayAvg = -Infinity, minDayAvg = Infinity;
+    for (const [day, s] of dayAgg.entries()) {
+        const avg = s.sum / s.count;
+        if (avg > maxDayAvg) { maxDayAvg = avg; maxDay = day; }
+        if (avg < minDayAvg) { minDayAvg = avg; minDay = day; }
+    }
+
+    const sortedDateRows = data
+        .map(d => d.traffic_index_date)
+        .filter(Boolean)
+        .sort();
+    const firstDate = sortedDateRows[0]?.slice(0, 10);
+    const lastDate = sortedDateRows[sortedDateRows.length - 1]?.slice(0, 10);
+    document.getElementById('barRange').textContent =
+        firstDate && lastDate ? `${formatDateLabel(firstDate)} - ${formatDateLabel(lastDate)}` : '-';
+
+    const allAverages = WEEKDAY_ORDER
+        .map((d) => dayAgg.get(d))
+        .filter(Boolean)
+        .map((s) => s.sum / s.count);
+    const minAvg = allAverages.length ? Math.min(...allAverages) : 0;
+    const maxAvg = allAverages.length ? Math.max(...allAverages) : 0;
+
+    const barsHtml = WEEKDAY_ORDER.map((dayIdx) => {
+        const dayData = dayAgg.get(dayIdx);
+        const value = dayData ? (dayData.sum / dayData.count) : 0;
+        const pct = maxAvg > 0 ? Math.max(6, Math.round((value / maxAvg) * 100)) : 0;
+        const color = getBarColor(value, minAvg, maxAvg);
+        return `
+            <div class="bar-card">
+                <div class="bar-day">${WEEKDAY_TR[dayIdx]}</div>
+                <div class="bar-track"><div class="bar-fill" style="height:${pct}%; background:${color};"></div></div>
+                <div class="bar-meta">${
+                    dayData
+                        ? `Gun ort: ${Math.round(value)}<br>En yuksek: ${Math.round(dayData.max)}<br>En dusuk: ${Math.round(dayData.min)}`
+                        : '-'
+                }</div>
+            </div>
+        `;
+    }).join('');
+    document.getElementById('weekdayBars').innerHTML = barsHtml;
+
+    const gap = Math.round(maxDayAvg - minDayAvg);
+    const trendText = gap >= 20
+        ? 'Hafta ici dagilim keskin: belirli gunlerde trafik belirgin sekilde yukseliyor.'
+        : gap >= 10
+            ? 'Hafta ici dagilim orta seviyede: yogun ve sakin gunler ayristiriliyor.'
+            : 'Hafta ici dagilim dengeli: gunler arasi fark sinirli.';
+    document.getElementById('barInsight').textContent =
+        `Veriye gore en yogun gun ${WEEKDAY_TR[maxDay]}, en sakin gun ${WEEKDAY_TR[minDay]}. ${trendText} ` +
+        `Genel zirve: ${maxPoint.raw ? maxPoint.raw.replace('T', ' ') : '-'} (${Math.round(maxPoint.value)}), ` +
+        `en dusuk anlik deger: ${minPoint.raw ? minPoint.raw.replace('T', ' ') : '-'} (${Math.round(minPoint.value)}).`;
+}
+
+// ========== CSV ==========
+async function exportCSV() {
+    const { start, end } = getParams();
+    let url = `${API_BASE}/api/export-csv`;
+    const params = new URLSearchParams();
+    if (start) params.append('start', start);
+    if (end) params.append('end', end);
+    if (params.toString()) url += '?' + params.toString();
+
+    // Sunucu tarafında hazırlanan CSV dosyasını indir
+    window.location.href = url;
+    showToast("Excel dosyası hazırlanıyor...", "success");
+}
+
+// ========== AUTO-REFRESH ==========
+function startCountdown() {
+    clearInterval(cdTimer);
+    let secs = REFRESH_SEC;
+    setCountdown(secs);
+    cdTimer = setInterval(() => {
+        secs--;
+        if (secs <= 0) { clearInterval(cdTimer); setCountdown(0); }
+        else setCountdown(secs);
+    }, 1000);
+}
+
+async function silentRefresh() {
+    try {
+        setStatus('Güncelleme kontrol ediliyor...', 'loading');
+        const newMax = await getLatestDate();
+
+        if (newMax && newMax !== lastMaxDate) {
+            lastMaxDate = newMax;
+
+            // Tarih aralığını yeni max'a kaydır
+            const end = getShiftedDate(new Date(), -END_DATE_OFFSET_DAYS);
+            const start = getShiftedDate(end, -1);
+            document.getElementById('startDate').value = fmtDate(start);
+            document.getElementById('startTime').value = DEFAULT_TIME;
+            document.getElementById('endDate').value   = fmtDate(end);
+            applyEndTimeAuto();
+
+            await fetchData();
+            showToast('Yeni veri geldi — grafik güncellendi!', 'success');
+        } else {
+            setStatus(`Son kontrol: ${fmtClock()} — değişiklik yok`, 'ok');
+        }
+    } catch(e) {
+        setStatus('Güncelleme hatası: ' + e.message, 'error');
+        console.warn('silentRefresh:', e);
+    }
+    startCountdown();
+}
+
+async function manualRefresh() {
+    clearInterval(refreshTimer);
+    clearInterval(cdTimer);
+    await silentRefresh();
+    refreshTimer = setInterval(silentRefresh, REFRESH_SEC * 1000);
+}
+
+// ========== INIT ==========
+async function initApp() {
+    try {
+        setStatus('Sistem başlatılıyor...', 'loading');
+        applyAutoDateRangeFromNow();
+        
+        lastMaxDate = await getLatestDate();
+
+        await fetchData();
+        
+        // Her 5 dakikada arka planda sessiz kontrol
+        startCountdown();
+        refreshTimer = setInterval(silentRefresh, REFRESH_SEC * 1000);
+
+    } catch(e) {
+        console.error("initApp hatası:", e);
+        setStatus('Yükleme hatası: ' + e.message, 'error');
+        applyAutoDateRangeFromNow();
+    }
+}
+
+document.getElementById('endDate').addEventListener('change', applyEndTimeAuto);
+initApp();
+</script>
+</body>
+</html>
